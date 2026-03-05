@@ -1046,7 +1046,7 @@ mpt_verify_equality_proof(
         return -1;
 
     // Must be 3 (Sender, Destination, Issuer) or 4 (plus Auditor)
-    if (n_participants != 3 || n_participants != 4)
+    if (n_participants != 3 && n_participants != 4)
         return -1;
 
     std::vector<secp256k1_pubkey> r_pts(n_participants);
@@ -1156,7 +1156,7 @@ mpt_verify_send_range_proof(
         kMPT_DOUBLE_BULLETPROOF_SIZE,
         commitments,
         2,
-        context_hash) != 1)
+        context_hash) != 0)
     {
         return -1;
     }
@@ -1262,8 +1262,7 @@ mpt_verify_clawback_proof(
         &c2,
         &c1,
         amount,
-        context_hash
-    ) != 1)
+        context_hash) != 1)
     {
         return -1;
     }
