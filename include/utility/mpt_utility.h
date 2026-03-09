@@ -127,12 +127,6 @@ int mpt_get_clawback_context_hash(account_id acc, mpt_issuance_id iss,
                                   uint8_t out_hash[kMPT_HALF_SHA_SIZE]);
 
 /**
- * @brief Calculates the size of the Multi-Ciphertext Equality Proof.
- */
-size_t
-get_multi_ciphertext_equality_proof_size(size_t n_recipients);
-
-/**
  * @brief Calculates the total size for a ConfidentialMPTSend proof.
  */
 size_t

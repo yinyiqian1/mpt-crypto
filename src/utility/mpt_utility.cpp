@@ -227,15 +227,10 @@ void mpt_add_common_zkp_fields(Serializer &s, uint16_t txType, account_id acc,
 
 extern "C" {
 size_t
-get_multi_ciphertext_equality_proof_size(size_t n_recipients)
-{
-    return secp256k1_mpt_prove_same_plaintext_multi_size(n_recipients);
-}
-
-size_t
 get_confidential_send_proof_size(size_t n_recipients)
 {
-    return get_multi_ciphertext_equality_proof_size(n_recipients) + (kMPT_PEDERSEN_LINK_SIZE * 2) + kMPT_DOUBLE_BULLETPROOF_SIZE;
+  return secp256k1_mpt_proof_equality_shared_r_size(n_recipients) +
+         (kMPT_PEDERSEN_LINK_SIZE * 2) + kMPT_DOUBLE_BULLETPROOF_SIZE;
 }
 
 bool
@@ -599,54 +594,55 @@ mpt_get_confidential_send_proof(
     if (!priv || !recipients || !tx_blinding_factor || !context_hash || !amount_params || !balance_params || !out_proof || !out_len)
         return -1;
 
+    if (n_recipients != 3 && n_recipients != 4)
+      return -1;
+
     secp256k1_context const* ctx = mpt_secp256k1_context();
     if (!ctx)
         return -1;
 
-    std::vector<secp256k1_pubkey> r(n_recipients);
-    std::vector<secp256k1_pubkey> s(n_recipients);
-    std::vector<secp256k1_pubkey> pk(n_recipients);
-
-    std::vector<uint8_t> sr;
-    sr.reserve(n_recipients * kMPT_BLINDING_FACTOR_SIZE);
+    secp256k1_pubkey c1;
+    std::vector<secp256k1_pubkey> c2_vec(n_recipients);
+    std::vector<secp256k1_pubkey> pk_vec(n_recipients);
 
     for (size_t i = 0; i < n_recipients; ++i)
     {
         auto const& rec = recipients[i];
 
-        if (!secp256k1_ec_pubkey_parse(ctx, &r[i], rec.ciphertext, kMPT_ELGAMAL_CIPHER_SIZE))
+        if (i == 0) {
+          if (secp256k1_ec_pubkey_parse(ctx, &c1, rec.ciphertext,
+                                        kMPT_ELGAMAL_CIPHER_SIZE) != 1)
             return -1;
-
-        if (!secp256k1_ec_pubkey_parse(
-                ctx, &s[i], rec.ciphertext + kMPT_ELGAMAL_CIPHER_SIZE, kMPT_ELGAMAL_CIPHER_SIZE))
+        } else {
+          // All participant's ciphertext must have the same C1.
+          if (!std::equal(rec.ciphertext,
+                          rec.ciphertext + kMPT_ELGAMAL_CIPHER_SIZE,
+                          recipients[0].ciphertext))
             return -1;
+        }
 
-        if (secp256k1_ec_pubkey_parse(ctx, &pk[i], rec.pubkey, kMPT_PUBKEY_SIZE) != 1)
-            return -1;
+        if (secp256k1_ec_pubkey_parse(ctx, &c2_vec[i],
+                                      rec.ciphertext + kMPT_ELGAMAL_CIPHER_SIZE,
+                                      kMPT_ELGAMAL_CIPHER_SIZE) != 1)
+          return -1;
 
-        sr.insert(sr.end(), tx_blinding_factor, tx_blinding_factor + kMPT_BLINDING_FACTOR_SIZE);
+        if (secp256k1_ec_pubkey_parse(ctx, &pk_vec[i], rec.pubkey,
+                                      kMPT_PUBKEY_SIZE) != 1)
+          return -1;
     }
 
-    size_t size_equality = secp256k1_mpt_prove_same_plaintext_multi_size(n_recipients);
+    size_t size_equality =
+        secp256k1_mpt_proof_equality_shared_r_size(n_recipients);
     size_t totalRequired = size_equality + kMPT_PEDERSEN_LINK_SIZE * 2;
 
     if (*out_len < totalRequired)
         return -1;
 
-    // Get the multi-ciphertext equality proof
-    if (secp256k1_mpt_prove_same_plaintext_multi(
-            ctx,
-            out_proof,
-            &size_equality,
-            amount,
-            n_recipients,
-            r.data(),
-            s.data(),
-            pk.data(),
-            sr.data(),
-            context_hash) != 1)
-    {
-        return -1;
+    // Get the multi-ciphertext equality proof with shared r
+    if (secp256k1_mpt_prove_equality_shared_r(
+            ctx, out_proof, amount, tx_blinding_factor, n_recipients, &c1,
+            c2_vec.data(), pk_vec.data(), context_hash) != 1) {
+      return -1;
     }
 
     // Amount Linkage Proof
@@ -1021,31 +1017,40 @@ mpt_verify_equality_proof(
     if (n_participants != 3 && n_participants != 4)
         return -1;
 
-    std::vector<secp256k1_pubkey> r_pts(n_participants);
-    std::vector<secp256k1_pubkey> s_pts(n_participants);
-    std::vector<secp256k1_pubkey> pk_pts(n_participants);
+    secp256k1_pubkey c1;
+    std::vector<secp256k1_pubkey> c2_vec(n_participants);
+    std::vector<secp256k1_pubkey> pk_vec(n_participants);
 
     for (uint8_t i = 0; i < n_participants; ++i)
     {
-        if (!mpt_make_ec_pair(participants[i].ciphertext, r_pts[i], s_pts[i]))
-            return -1;
+      if (i == 0) {
+        if (secp256k1_ec_pubkey_parse(ctx, &c1, participants[i].ciphertext,
+                                      kMPT_ELGAMAL_CIPHER_SIZE) != 1)
+          return -1;
+      } else {
+        // All participants must share the exact same C1 bytes
+        if (!std::equal(participants[i].ciphertext,
+                        participants[i].ciphertext + kMPT_ELGAMAL_CIPHER_SIZE,
+                        participants[0].ciphertext)) {
+          return -1;
+        }
+      }
 
-        if (secp256k1_ec_pubkey_parse(ctx, &pk_pts[i],
-            participants[i].pubkey, kMPT_PUBKEY_SIZE) != 1)
-            return -1;
+      if (secp256k1_ec_pubkey_parse(ctx, &c2_vec[i],
+                                    participants[i].ciphertext +
+                                        kMPT_ELGAMAL_CIPHER_SIZE,
+                                    kMPT_ELGAMAL_CIPHER_SIZE) != 1)
+        return -1;
+
+      if (secp256k1_ec_pubkey_parse(ctx, &pk_vec[i], participants[i].pubkey,
+                                    kMPT_PUBKEY_SIZE) != 1)
+        return -1;
     }
 
-    if(secp256k1_mpt_verify_same_plaintext_multi(
-        ctx,
-        proof,
-        proof_len,
-        n_participants,
-        r_pts.data(),
-        s_pts.data(),
-        pk_pts.data(),
-        context_hash) != 1)
-    {
-        return -1;
+    if (secp256k1_mpt_verify_equality_shared_r(ctx, proof, n_participants, &c1,
+                                               c2_vec.data(), pk_vec.data(),
+                                               context_hash) != 1) {
+      return -1;
     }
 
     return 0;
