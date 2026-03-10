@@ -1,29 +1,31 @@
-#include <cstring>
 #include <openssl/rand.h>
 #include <openssl/sha.h>
-#include <secp256k1_mpt.h>
 #include <utility/mpt_utility.h>
-#include <vector>
+
+#include <secp256k1_mpt.h>
+
+#include <cstring>
 #include <iostream>
+#include <vector>
 
 // Platform endianness support for serialization
 #if defined(_WIN32) || defined(_WIN64)
-    #include <stdlib.h>
-    #define MPT_HTOBE16(x) _byteswap_ushort(static_cast<uint16_t>(x))
-    #define MPT_HTOBE32(x) _byteswap_ulong(static_cast<uint32_t>(x))
-    #define MPT_HTOBE64(x) _byteswap_uint64(static_cast<uint64_t>(x))
+#include <stdlib.h>
+#define MPT_HTOBE16(x) _byteswap_ushort(static_cast<uint16_t>(x))
+#define MPT_HTOBE32(x) _byteswap_ulong(static_cast<uint32_t>(x))
+#define MPT_HTOBE64(x) _byteswap_uint64(static_cast<uint64_t>(x))
 
 #elif defined(__APPLE__)
-    #include <libkern/OSByteOrder.h>
-    #define MPT_HTOBE16(x) OSSwapHostToBigInt16(x)
-    #define MPT_HTOBE32(x) OSSwapHostToBigInt32(x)
-    #define MPT_HTOBE64(x) OSSwapHostToBigInt64(x)
+#include <libkern/OSByteOrder.h>
+#define MPT_HTOBE16(x) OSSwapHostToBigInt16(x)
+#define MPT_HTOBE32(x) OSSwapHostToBigInt32(x)
+#define MPT_HTOBE64(x) OSSwapHostToBigInt64(x)
 
 #else
-    #include <endian.h>
-    #define MPT_HTOBE16(x) htobe16(x)
-    #define MPT_HTOBE32(x) htobe32(x)
-    #define MPT_HTOBE64(x) htobe64(x)
+#include <endian.h>
+#define MPT_HTOBE16(x) htobe16(x)
+#define MPT_HTOBE32(x) htobe32(x)
+#define MPT_HTOBE64(x) htobe64(x)
 #endif
 
 /**
@@ -45,8 +47,10 @@ mpt_get_bulletproof_agg(
     secp256k1_context const* ctx = mpt_secp256k1_context();
 
     uint8_t blindings_flat[64];
-    for (size_t i = 0; i < m; ++i) {
-        if (!blinding_ptrs[i]) return -1;
+    for (size_t i = 0; i < m; ++i)
+    {
+        if (!blinding_ptrs[i])
+            return -1;
         std::memcpy(blindings_flat + (i * 32), blinding_ptrs[i], 32);
     }
 
@@ -55,14 +59,7 @@ mpt_get_bulletproof_agg(
         return -1;
 
     if (secp256k1_bulletproof_prove_agg(
-            ctx,
-            out_proof,
-            out_len,
-            values,
-            blindings_flat,
-            m,
-            &pk_base,
-            context_hash) != 1)
+            ctx, out_proof, out_len, values, blindings_flat, m, &pk_base, context_hash) != 1)
     {
         return -1;
     }
@@ -135,15 +132,20 @@ struct Serializer
     }
 
     // User should check isValid() after serialization to ensure no overflow occurred
-    bool isValid() const { return !overflow; }
+    bool
+    isValid() const
+    {
+        return !overflow;
+    }
 
     void
     add16(uint16_t val)
     {
-      if (overflow || offset + sizeof(val) > capacity) {
-        overflow = true;
-        return;
-      }
+        if (overflow || offset + sizeof(val) > capacity)
+        {
+            overflow = true;
+            return;
+        }
 
         uint16_t n = MPT_HTOBE16(val);
         memcpy(buffer + offset, &n, sizeof(val));
@@ -153,10 +155,11 @@ struct Serializer
     void
     add32(uint32_t val)
     {
-      if (overflow || offset + sizeof(val) > capacity) {
-        overflow = true;
-        return;
-      }
+        if (overflow || offset + sizeof(val) > capacity)
+        {
+            overflow = true;
+            return;
+        }
 
         uint32_t n = MPT_HTOBE32(val);
         memcpy(buffer + offset, &n, sizeof(val));
@@ -166,10 +169,11 @@ struct Serializer
     void
     add64(uint64_t val)
     {
-      if (overflow || offset + sizeof(val) > capacity) {
-        overflow = true;
-        return;
-      }
+        if (overflow || offset + sizeof(val) > capacity)
+        {
+            overflow = true;
+            return;
+        }
 
         uint64_t n = MPT_HTOBE64(val);
         memcpy(buffer + offset, &n, sizeof(val));
@@ -179,7 +183,8 @@ struct Serializer
     void
     addRaw(uint8_t const* data, size_t len)
     {
-        if (overflow || offset + len > capacity) {
+        if (overflow || offset + len > capacity)
+        {
             overflow = true;
             return;
         }
@@ -197,20 +202,26 @@ sha512_half(uint8_t const* data, size_t len, uint8_t* out)
     memcpy(out, full_hash, SHA512_DIGEST_LENGTH / 2);
 }
 
-void mpt_add_common_zkp_fields(Serializer &s, uint16_t txType, account_id acc,
-                               mpt_issuance_id iss, uint32_t seq) {
-  s.add16(txType);
-  s.addRaw(acc.bytes, sizeof(acc.bytes));
-  s.addRaw(iss.bytes, sizeof(iss.bytes));
-  s.add32(seq);
+void
+mpt_add_common_zkp_fields(
+    Serializer& s,
+    uint16_t txType,
+    account_id acc,
+    mpt_issuance_id iss,
+    uint32_t seq)
+{
+    s.add16(txType);
+    s.addRaw(acc.bytes, sizeof(acc.bytes));
+    s.addRaw(iss.bytes, sizeof(iss.bytes));
+    s.add32(seq);
 }
 
 extern "C" {
 size_t
 get_confidential_send_proof_size(size_t n_recipients)
 {
-  return secp256k1_mpt_proof_equality_shared_r_size(n_recipients) +
-         (kMPT_PEDERSEN_LINK_SIZE * 2) + kMPT_DOUBLE_BULLETPROOF_SIZE;
+    return secp256k1_mpt_proof_equality_shared_r_size(n_recipients) +
+        (kMPT_PEDERSEN_LINK_SIZE * 2) + kMPT_DOUBLE_BULLETPROOF_SIZE;
 }
 
 bool
@@ -254,72 +265,92 @@ mpt_serialize_ec_pair(
     return true;
 }
 
-int mpt_get_convert_context_hash(account_id acc, mpt_issuance_id iss,
-                                 uint32_t seq,
-                                 uint8_t out_hash[kMPT_HALF_SHA_SIZE]) {
-  uint8_t buf[kMPT_ZKP_CONTEXT_HASH_SIZE];
-  Serializer s(buf, kMPT_ZKP_CONTEXT_HASH_SIZE);
+int
+mpt_get_convert_context_hash(
+    account_id acc,
+    mpt_issuance_id iss,
+    uint32_t seq,
+    uint8_t out_hash[kMPT_HALF_SHA_SIZE])
+{
+    uint8_t buf[kMPT_ZKP_CONTEXT_HASH_SIZE];
+    Serializer s(buf, kMPT_ZKP_CONTEXT_HASH_SIZE);
 
-  mpt_add_common_zkp_fields(s, ttCONFIDENTIAL_MPT_CONVERT, acc, iss, seq);
-  s.addRaw(acc.bytes, sizeof(acc.bytes));
-  s.add32(0);
+    mpt_add_common_zkp_fields(s, ttCONFIDENTIAL_MPT_CONVERT, acc, iss, seq);
+    s.addRaw(acc.bytes, sizeof(acc.bytes));
+    s.add32(0);
 
-  if (!s.isValid())
-    return -1;
+    if (!s.isValid())
+        return -1;
 
-  sha512_half(buf, s.offset, out_hash);
-  return 0;
+    sha512_half(buf, s.offset, out_hash);
+    return 0;
 }
 
-int mpt_get_convert_back_context_hash(account_id acc, mpt_issuance_id iss,
-                                      uint32_t seq, uint32_t ver,
-                                      uint8_t out_hash[kMPT_HALF_SHA_SIZE]) {
-  uint8_t buf[kMPT_ZKP_CONTEXT_HASH_SIZE];
-  Serializer s(buf, kMPT_ZKP_CONTEXT_HASH_SIZE);
+int
+mpt_get_convert_back_context_hash(
+    account_id acc,
+    mpt_issuance_id iss,
+    uint32_t seq,
+    uint32_t ver,
+    uint8_t out_hash[kMPT_HALF_SHA_SIZE])
+{
+    uint8_t buf[kMPT_ZKP_CONTEXT_HASH_SIZE];
+    Serializer s(buf, kMPT_ZKP_CONTEXT_HASH_SIZE);
 
-  mpt_add_common_zkp_fields(s, ttCONFIDENTIAL_MPT_CONVERT_BACK, acc, iss, seq);
-  s.addRaw(acc.bytes, sizeof(acc.bytes));
-  s.add32(ver);
+    mpt_add_common_zkp_fields(s, ttCONFIDENTIAL_MPT_CONVERT_BACK, acc, iss, seq);
+    s.addRaw(acc.bytes, sizeof(acc.bytes));
+    s.add32(ver);
 
-  if (!s.isValid())
-    return -1;
+    if (!s.isValid())
+        return -1;
 
-  sha512_half(buf, s.offset, out_hash);
-  return 0;
+    sha512_half(buf, s.offset, out_hash);
+    return 0;
 }
 
-int mpt_get_send_context_hash(account_id acc, mpt_issuance_id iss, uint32_t seq,
-                              account_id dest, uint32_t ver,
-                              uint8_t out_hash[kMPT_HALF_SHA_SIZE]) {
-  uint8_t buf[kMPT_ZKP_CONTEXT_HASH_SIZE];
-  Serializer s(buf, kMPT_ZKP_CONTEXT_HASH_SIZE);
+int
+mpt_get_send_context_hash(
+    account_id acc,
+    mpt_issuance_id iss,
+    uint32_t seq,
+    account_id dest,
+    uint32_t ver,
+    uint8_t out_hash[kMPT_HALF_SHA_SIZE])
+{
+    uint8_t buf[kMPT_ZKP_CONTEXT_HASH_SIZE];
+    Serializer s(buf, kMPT_ZKP_CONTEXT_HASH_SIZE);
 
-  mpt_add_common_zkp_fields(s, ttCONFIDENTIAL_MPT_SEND, acc, iss, seq);
-  s.addRaw(dest.bytes, sizeof(dest.bytes));
-  s.add32(ver);
+    mpt_add_common_zkp_fields(s, ttCONFIDENTIAL_MPT_SEND, acc, iss, seq);
+    s.addRaw(dest.bytes, sizeof(dest.bytes));
+    s.add32(ver);
 
-  if (!s.isValid())
-    return -1;
+    if (!s.isValid())
+        return -1;
 
-  sha512_half(buf, s.offset, out_hash);
-  return 0;
+    sha512_half(buf, s.offset, out_hash);
+    return 0;
 }
 
-int mpt_get_clawback_context_hash(account_id acc, mpt_issuance_id iss,
-                                  uint32_t seq, account_id holder,
-                                  uint8_t out_hash[kMPT_HALF_SHA_SIZE]) {
-  uint8_t buf[kMPT_ZKP_CONTEXT_HASH_SIZE];
-  Serializer s(buf, kMPT_ZKP_CONTEXT_HASH_SIZE);
+int
+mpt_get_clawback_context_hash(
+    account_id acc,
+    mpt_issuance_id iss,
+    uint32_t seq,
+    account_id holder,
+    uint8_t out_hash[kMPT_HALF_SHA_SIZE])
+{
+    uint8_t buf[kMPT_ZKP_CONTEXT_HASH_SIZE];
+    Serializer s(buf, kMPT_ZKP_CONTEXT_HASH_SIZE);
 
-  mpt_add_common_zkp_fields(s, ttCONFIDENTIAL_MPT_CLAWBACK, acc, iss, seq);
-  s.addRaw(holder.bytes, sizeof(holder.bytes));
-  s.add32(0);
+    mpt_add_common_zkp_fields(s, ttCONFIDENTIAL_MPT_CLAWBACK, acc, iss, seq);
+    s.addRaw(holder.bytes, sizeof(holder.bytes));
+    s.add32(0);
 
-  if (!s.isValid())
-    return -1;
+    if (!s.isValid())
+        return -1;
 
-  sha512_half(buf, s.offset, out_hash);
-  return 0;
+    sha512_half(buf, s.offset, out_hash);
+    return 0;
 }
 
 int
@@ -334,7 +365,8 @@ mpt_generate_keypair(uint8_t* out_privkey, uint8_t* out_pubkey)
         return -1;
 
     size_t output_len = kMPT_PUBKEY_SIZE;
-    if (secp256k1_ec_pubkey_serialize(ctx, out_pubkey, &output_len, &pub, SECP256K1_EC_COMPRESSED) != 1)
+    if (secp256k1_ec_pubkey_serialize(
+            ctx, out_pubkey, &output_len, &pub, SECP256K1_EC_COMPRESSED) != 1)
         return -1;
 
     return 0;
@@ -350,7 +382,8 @@ mpt_generate_blinding_factor(uint8_t out_factor[kMPT_BLINDING_FACTOR_SIZE])
     if (!ctx)
         return -1;
 
-    do {
+    do
+    {
         if (RAND_bytes(out_factor, kMPT_BLINDING_FACTOR_SIZE) != 1)
             return -1;
     } while (secp256k1_ec_seckey_verify(ctx, out_factor) != 1);
@@ -458,7 +491,8 @@ mpt_get_pedersen_commitment(
         return -1;
 
     size_t output_len = kMPT_PEDERSEN_COMMIT_SIZE;
-    if (secp256k1_ec_pubkey_serialize(ctx, out_commitment, &output_len, &commitment, SECP256K1_EC_COMPRESSED) != 1)
+    if (secp256k1_ec_pubkey_serialize(
+            ctx, out_commitment, &output_len, &commitment, SECP256K1_EC_COMPRESSED) != 1)
         return -1;
 
     return 0;
@@ -490,7 +524,8 @@ mpt_get_amount_linkage_proof(
     if (secp256k1_ec_pubkey_parse(ctx, &pk, pubkey, kMPT_PUBKEY_SIZE) != 1)
         return -1;
 
-    if (secp256k1_ec_pubkey_parse(ctx, &pcm, params->pedersen_commitment, kMPT_PEDERSEN_COMMIT_SIZE) != 1)
+    if (secp256k1_ec_pubkey_parse(
+            ctx, &pcm, params->pedersen_commitment, kMPT_PEDERSEN_COMMIT_SIZE) != 1)
         return -1;
 
     if (secp256k1_elgamal_pedersen_link_prove(
@@ -537,7 +572,8 @@ mpt_get_balance_linkage_proof(
     if (secp256k1_ec_pubkey_parse(ctx, &pk, pub, kMPT_PUBKEY_SIZE) != 1)
         return -1;
 
-    if (secp256k1_ec_pubkey_parse(ctx, &pcm, params->pedersen_commitment, kMPT_PEDERSEN_COMMIT_SIZE) != 1)
+    if (secp256k1_ec_pubkey_parse(
+            ctx, &pcm, params->pedersen_commitment, kMPT_PEDERSEN_COMMIT_SIZE) != 1)
         return -1;
 
     if (secp256k1_elgamal_pedersen_link_prove(
@@ -571,11 +607,12 @@ mpt_get_confidential_send_proof(
     uint8_t* out_proof,
     size_t* out_len)
 {
-    if (!priv || !recipients || !tx_blinding_factor || !context_hash || !amount_params || !balance_params || !out_proof || !out_len)
+    if (!priv || !recipients || !tx_blinding_factor || !context_hash || !amount_params ||
+        !balance_params || !out_proof || !out_len)
         return -1;
 
     if (n_recipients != 3 && n_recipients != 4)
-      return -1;
+        return -1;
 
     secp256k1_context const* ctx = mpt_secp256k1_context();
     if (!ctx)
@@ -589,30 +626,33 @@ mpt_get_confidential_send_proof(
     {
         auto const& rec = recipients[i];
 
-        if (i == 0) {
-          if (secp256k1_ec_pubkey_parse(ctx, &c1, rec.ciphertext,
-                                        kMPT_ELGAMAL_CIPHER_SIZE) != 1)
-            return -1;
-        } else {
-          // All participant's ciphertext must have the same C1.
-          if (!std::equal(rec.ciphertext,
-                          rec.ciphertext + kMPT_ELGAMAL_CIPHER_SIZE,
-                          recipients[0].ciphertext))
-            return -1;
+        if (i == 0)
+        {
+            if (secp256k1_ec_pubkey_parse(ctx, &c1, rec.ciphertext, kMPT_ELGAMAL_CIPHER_SIZE) != 1)
+                return -1;
+        }
+        else
+        {
+            // All participant's ciphertext must have the same C1.
+            if (!std::equal(
+                    rec.ciphertext,
+                    rec.ciphertext + kMPT_ELGAMAL_CIPHER_SIZE,
+                    recipients[0].ciphertext))
+                return -1;
         }
 
-        if (secp256k1_ec_pubkey_parse(ctx, &c2_vec[i],
-                                      rec.ciphertext + kMPT_ELGAMAL_CIPHER_SIZE,
-                                      kMPT_ELGAMAL_CIPHER_SIZE) != 1)
-          return -1;
+        if (secp256k1_ec_pubkey_parse(
+                ctx,
+                &c2_vec[i],
+                rec.ciphertext + kMPT_ELGAMAL_CIPHER_SIZE,
+                kMPT_ELGAMAL_CIPHER_SIZE) != 1)
+            return -1;
 
-        if (secp256k1_ec_pubkey_parse(ctx, &pk_vec[i], rec.pubkey,
-                                      kMPT_PUBKEY_SIZE) != 1)
-          return -1;
+        if (secp256k1_ec_pubkey_parse(ctx, &pk_vec[i], rec.pubkey, kMPT_PUBKEY_SIZE) != 1)
+            return -1;
     }
 
-    size_t size_equality =
-        secp256k1_mpt_proof_equality_shared_r_size(n_recipients);
+    size_t size_equality = secp256k1_mpt_proof_equality_shared_r_size(n_recipients);
     size_t totalRequired = size_equality + kMPT_PEDERSEN_LINK_SIZE * 2;
 
     if (*out_len < totalRequired)
@@ -620,9 +660,17 @@ mpt_get_confidential_send_proof(
 
     // Get the multi-ciphertext equality proof with shared r
     if (secp256k1_mpt_prove_equality_shared_r(
-            ctx, out_proof, amount, tx_blinding_factor, n_recipients, &c1,
-            c2_vec.data(), pk_vec.data(), context_hash) != 1) {
-      return -1;
+            ctx,
+            out_proof,
+            amount,
+            tx_blinding_factor,
+            n_recipients,
+            &c1,
+            c2_vec.data(),
+            pk_vec.data(),
+            context_hash) != 1)
+    {
+        return -1;
     }
 
     // Amount Linkage Proof
@@ -635,7 +683,8 @@ mpt_get_confidential_send_proof(
 
     // Balance Linkage Proof
     uint8_t* bal_ptr = amt_ptr + kMPT_PEDERSEN_LINK_SIZE;
-    if (mpt_get_balance_linkage_proof(priv, recipients[0].pubkey, context_hash, balance_params, bal_ptr) != 0)
+    if (mpt_get_balance_linkage_proof(
+            priv, recipients[0].pubkey, context_hash, balance_params, bal_ptr) != 0)
     {
         return -1;
     }
@@ -644,7 +693,7 @@ mpt_get_confidential_send_proof(
 
     // Values to prove: [amount being sent, remaining balance] for range proof
     uint64_t const remaining_balance = balance_params->amount - amount;
-    uint64_t bp_values[2] = { amount, remaining_balance };
+    uint64_t bp_values[2] = {amount, remaining_balance};
 
     // Blinding factors: [rho_amount, rho_balance - rho_amount]
     uint8_t rho_rem[32];
@@ -652,10 +701,11 @@ mpt_get_confidential_send_proof(
     secp256k1_mpt_scalar_negate(neg_rho_m, amount_params->blinding_factor);
     secp256k1_mpt_scalar_add(rho_rem, balance_params->blinding_factor, neg_rho_m);
 
-    uint8_t const* bp_blinding_ptrs[2] = { amount_params->blinding_factor, rho_rem };
+    uint8_t const* bp_blinding_ptrs[2] = {amount_params->blinding_factor, rho_rem};
     size_t actual_bp_len = kMPT_DOUBLE_BULLETPROOF_SIZE;
 
-    if (mpt_get_bulletproof_agg(bp_values, bp_blinding_ptrs, 2, context_hash, bp_ptr, &actual_bp_len) != 0)
+    if (mpt_get_bulletproof_agg(
+            bp_values, bp_blinding_ptrs, 2, context_hash, bp_ptr, &actual_bp_len) != 0)
         return -1;
 
     *out_len = size_equality + (kMPT_PEDERSEN_LINK_SIZE * 2) + actual_bp_len;
@@ -680,15 +730,10 @@ mpt_get_convert_back_proof(
     uint8_t* bulletproof_ptr = out_proof + kMPT_PEDERSEN_LINK_SIZE;
     size_t proof_len = kMPT_SINGLE_BULLETPROOF_SIZE;
 
-    uint8_t const* blinding_ptrs[1] = { params->blinding_factor };
+    uint8_t const* blinding_ptrs[1] = {params->blinding_factor};
 
     return mpt_get_bulletproof_agg(
-        &remaining_balance,
-        blinding_ptrs,
-        1,
-        context_hash,
-        bulletproof_ptr,
-        &proof_len);
+        &remaining_balance, blinding_ptrs, 1, context_hash, bulletproof_ptr, &proof_len);
 }
 
 int
@@ -766,7 +811,8 @@ mpt_verify_revealed_amount(
 
     status |= mpt_internal_verify_single(ctx, amount, blinding_factor, issuer);
 
-    if (auditor) {
+    if (auditor)
+    {
         status |= mpt_internal_verify_single(ctx, amount, blinding_factor, auditor);
     }
 
@@ -792,11 +838,7 @@ mpt_verify_convert_proof(
         return -1;
     }
 
-    if (secp256k1_mpt_pok_sk_verify(
-            ctx,
-            proof,
-            &pk,
-            context_hash) != 1)
+    if (secp256k1_mpt_pok_sk_verify(ctx, proof, &pk, context_hash) != 1)
     {
         return -1;
     }
@@ -829,14 +871,7 @@ mpt_verify_balance_linkage(
     if (secp256k1_ec_pubkey_parse(ctx, &pcm, commitment, kMPT_PEDERSEN_COMMIT_SIZE) != 1)
         return -1;
 
-    if (secp256k1_elgamal_pedersen_link_verify(
-            ctx,
-            proof,
-            &pk,
-            &c2,
-            &c1,
-            &pcm,
-            context_hash) != 1)
+    if (secp256k1_elgamal_pedersen_link_verify(ctx, proof, &pk, &c2, &c1, &pcm, context_hash) != 1)
     {
         return -1;
     }
@@ -863,7 +898,8 @@ mpt_compute_convert_back_remainder(
 
     // Convert amount to 32-byte big-endian scalar
     uint8_t scalar[32] = {0};
-    for (int i = 0; i < 8; ++i) {
+    for (int i = 0; i < 8; ++i)
+    {
         scalar[31 - i] = static_cast<uint8_t>(amount >> (i * 8));
     }
 
@@ -882,14 +918,17 @@ mpt_compute_convert_back_remainder(
         return -1;
 
     size_t out_len = kMPT_PEDERSEN_COMMIT_SIZE;
-    return (secp256k1_ec_pubkey_serialize(ctx, remainder, &out_len, &pc_rem, SECP256K1_EC_COMPRESSED) == 1) ? 0 : -1;
+    return (secp256k1_ec_pubkey_serialize(
+                ctx, remainder, &out_len, &pc_rem, SECP256K1_EC_COMPRESSED) == 1)
+        ? 0
+        : -1;
 }
 
 int
 mpt_verify_aggregated_bulletproof(
     uint8_t const* proof,
     size_t proof_len,
-    uint8_t const** compressed_commitments, // Pointer to array of pointers
+    uint8_t const** compressed_commitments,  // Pointer to array of pointers
     size_t m,
     uint8_t const context_hash[kMPT_HALF_SHA_SIZE])
 {
@@ -905,9 +944,10 @@ mpt_verify_aggregated_bulletproof(
         return -1;
 
     std::vector<secp256k1_pubkey> commitments(m);
-    for (size_t i = 0; i < m; ++i) {
-        if (secp256k1_ec_pubkey_parse(ctx, &commitments[i],
-            compressed_commitments[i], kMPT_PEDERSEN_COMMIT_SIZE) != 1)
+    for (size_t i = 0; i < m; ++i)
+    {
+        if (secp256k1_ec_pubkey_parse(
+                ctx, &commitments[i], compressed_commitments[i], kMPT_PEDERSEN_COMMIT_SIZE) != 1)
             return -1;
     }
 
@@ -926,15 +966,15 @@ mpt_verify_aggregated_bulletproof(
         return -1;
 
     if (secp256k1_bulletproof_verify_agg(
-        ctx,
-        G_vec.data(),
-        H_vec.data(),
-        proof,
-        proof_len,
-        commitments.data(),
-        m,
-        &pk_base,
-        context_hash) != 1)
+            ctx,
+            G_vec.data(),
+            H_vec.data(),
+            proof,
+            proof_len,
+            commitments.data(),
+            m,
+            &pk_base,
+            context_hash) != 1)
     {
         return -1;
     }
@@ -955,12 +995,8 @@ mpt_verify_convert_back_proof(
         return -1;
 
     // Verify Pedersen balance linkage
-    if (mpt_verify_balance_linkage(
-            proof,
-            ciphertext,
-            pubkey,
-            balance_commitment,
-            context_hash) != 0)
+    if (mpt_verify_balance_linkage(proof, ciphertext, pubkey, balance_commitment, context_hash) !=
+        0)
     {
         return -1;
     }
@@ -971,14 +1007,10 @@ mpt_verify_convert_back_proof(
         return -1;
 
     uint8_t const* bulletproof_ptr = proof + kMPT_PEDERSEN_LINK_SIZE;
-    uint8_t const* commitments_array[1] = { pc_rem };
+    uint8_t const* commitments_array[1] = {pc_rem};
 
     return mpt_verify_aggregated_bulletproof(
-            bulletproof_ptr,
-            kMPT_SINGLE_BULLETPROOF_SIZE,
-            commitments_array,
-            1,
-            context_hash);
+        bulletproof_ptr, kMPT_SINGLE_BULLETPROOF_SIZE, commitments_array, 1, context_hash);
 }
 
 int
@@ -1003,34 +1035,40 @@ mpt_verify_equality_proof(
 
     for (uint8_t i = 0; i < n_participants; ++i)
     {
-      if (i == 0) {
-        if (secp256k1_ec_pubkey_parse(ctx, &c1, participants[i].ciphertext,
-                                      kMPT_ELGAMAL_CIPHER_SIZE) != 1)
-          return -1;
-      } else {
-        // All participants must share the exact same C1 bytes
-        if (!std::equal(participants[i].ciphertext,
-                        participants[i].ciphertext + kMPT_ELGAMAL_CIPHER_SIZE,
-                        participants[0].ciphertext)) {
-          return -1;
+        if (i == 0)
+        {
+            if (secp256k1_ec_pubkey_parse(
+                    ctx, &c1, participants[i].ciphertext, kMPT_ELGAMAL_CIPHER_SIZE) != 1)
+                return -1;
         }
-      }
+        else
+        {
+            // All participants must share the exact same C1 bytes
+            if (!std::equal(
+                    participants[i].ciphertext,
+                    participants[i].ciphertext + kMPT_ELGAMAL_CIPHER_SIZE,
+                    participants[0].ciphertext))
+            {
+                return -1;
+            }
+        }
 
-      if (secp256k1_ec_pubkey_parse(ctx, &c2_vec[i],
-                                    participants[i].ciphertext +
-                                        kMPT_ELGAMAL_CIPHER_SIZE,
-                                    kMPT_ELGAMAL_CIPHER_SIZE) != 1)
-        return -1;
+        if (secp256k1_ec_pubkey_parse(
+                ctx,
+                &c2_vec[i],
+                participants[i].ciphertext + kMPT_ELGAMAL_CIPHER_SIZE,
+                kMPT_ELGAMAL_CIPHER_SIZE) != 1)
+            return -1;
 
-      if (secp256k1_ec_pubkey_parse(ctx, &pk_vec[i], participants[i].pubkey,
-                                    kMPT_PUBKEY_SIZE) != 1)
-        return -1;
+        if (secp256k1_ec_pubkey_parse(ctx, &pk_vec[i], participants[i].pubkey, kMPT_PUBKEY_SIZE) !=
+            1)
+            return -1;
     }
 
-    if (secp256k1_mpt_verify_equality_shared_r(ctx, proof, n_participants, &c1,
-                                               c2_vec.data(), pk_vec.data(),
-                                               context_hash) != 1) {
-      return -1;
+    if (secp256k1_mpt_verify_equality_shared_r(
+            ctx, proof, n_participants, &c1, c2_vec.data(), pk_vec.data(), context_hash) != 1)
+    {
+        return -1;
     }
 
     return 0;
@@ -1058,14 +1096,7 @@ mpt_verify_amount_linkage(
     if (secp256k1_ec_pubkey_parse(ctx, &pcm, commitment, kMPT_PEDERSEN_COMMIT_SIZE) != 1)
         return -1;
 
-    if (secp256k1_elgamal_pedersen_link_verify(
-        ctx,
-        proof,
-        &c1,
-        &c2,
-        &pk,
-        &pcm,
-        context_hash) != 1)
+    if (secp256k1_elgamal_pedersen_link_verify(ctx, proof, &c1, &c2, &pk, &pcm, context_hash) != 1)
     {
         return -1;
     }
@@ -1085,10 +1116,12 @@ mpt_verify_send_range_proof(
         return -1;
 
     secp256k1_pubkey pc_amount, pc_balance;
-    if (secp256k1_ec_pubkey_parse(ctx, &pc_amount, amount_commitment, kMPT_PEDERSEN_COMMIT_SIZE) != 1)
+    if (secp256k1_ec_pubkey_parse(ctx, &pc_amount, amount_commitment, kMPT_PEDERSEN_COMMIT_SIZE) !=
+        1)
         return -1;
 
-    if (secp256k1_ec_pubkey_parse(ctx, &pc_balance, balance_commitment, kMPT_PEDERSEN_COMMIT_SIZE) != 1)
+    if (secp256k1_ec_pubkey_parse(
+            ctx, &pc_balance, balance_commitment, kMPT_PEDERSEN_COMMIT_SIZE) != 1)
         return -1;
 
     // Negate PC_amount point to get -PC_amount
@@ -1103,17 +1136,14 @@ mpt_verify_send_range_proof(
 
     uint8_t remainder_commitment[kMPT_PEDERSEN_COMMIT_SIZE];
     size_t out_len = kMPT_PEDERSEN_COMMIT_SIZE;
-    if (secp256k1_ec_pubkey_serialize(ctx, remainder_commitment, &out_len, &pc_rem, SECP256K1_EC_COMPRESSED) != 1)
+    if (secp256k1_ec_pubkey_serialize(
+            ctx, remainder_commitment, &out_len, &pc_rem, SECP256K1_EC_COMPRESSED) != 1)
         return -1;
 
-    uint8_t const* commitments[2] = { amount_commitment, remainder_commitment };
+    uint8_t const* commitments[2] = {amount_commitment, remainder_commitment};
 
     if (mpt_verify_aggregated_bulletproof(
-        proof,
-        kMPT_DOUBLE_BULLETPROOF_SIZE,
-        commitments,
-        2,
-        context_hash) != 0)
+            proof, kMPT_DOUBLE_BULLETPROOF_SIZE, commitments, 2, context_hash) != 0)
     {
         return -1;
     }
@@ -1146,7 +1176,8 @@ mpt_verify_send_proof(
     size_t current_offset = 0;
 
     // Verify the length of the proof
-    size_t const total_required = eq_len + (2 * kMPT_PEDERSEN_LINK_SIZE) + kMPT_DOUBLE_BULLETPROOF_SIZE;
+    size_t const total_required =
+        eq_len + (2 * kMPT_PEDERSEN_LINK_SIZE) + kMPT_DOUBLE_BULLETPROOF_SIZE;
     if (proof_len != total_required)
         return -1;
 
@@ -1155,8 +1186,8 @@ mpt_verify_send_proof(
     bool valid = true;
 
     // Verify Equality Proof
-    if (mpt_verify_equality_proof(ctx, proof + current_offset, eq_len,
-                                  participants, n_participants, context_hash) != 0)
+    if (mpt_verify_equality_proof(
+            ctx, proof + current_offset, eq_len, participants, n_participants, context_hash) != 0)
     {
         valid = false;
     }
@@ -1164,24 +1195,33 @@ mpt_verify_send_proof(
     current_offset += eq_len;
 
     // Verify Amount Linkage
-    if (mpt_verify_amount_linkage(ctx, proof + current_offset, participants[0].ciphertext,
-                                  participants[0].pubkey, amount_commitment, context_hash) != 0)
+    if (mpt_verify_amount_linkage(
+            ctx,
+            proof + current_offset,
+            participants[0].ciphertext,
+            participants[0].pubkey,
+            amount_commitment,
+            context_hash) != 0)
     {
         valid = false;
     }
     current_offset += kMPT_PEDERSEN_LINK_SIZE;
 
     // Verify Balance Linkage
-    if (mpt_verify_balance_linkage(proof + current_offset, sender_spending_ciphertext,
-                                   participants[0].pubkey, balance_commitment, context_hash) != 0)
+    if (mpt_verify_balance_linkage(
+            proof + current_offset,
+            sender_spending_ciphertext,
+            participants[0].pubkey,
+            balance_commitment,
+            context_hash) != 0)
     {
         valid = false;
     }
     current_offset += kMPT_PEDERSEN_LINK_SIZE;
 
     // Verify Range Proof
-    if (mpt_verify_send_range_proof(ctx, proof + current_offset,
-                                    amount_commitment, balance_commitment, context_hash) != 0)
+    if (mpt_verify_send_range_proof(
+            ctx, proof + current_offset, amount_commitment, balance_commitment, context_hash) != 0)
     {
         valid = false;
     }
@@ -1212,14 +1252,7 @@ mpt_verify_clawback_proof(
     if (secp256k1_ec_pubkey_parse(ctx, &pk, pubkey, kMPT_PUBKEY_SIZE) != 1)
         return -1;
 
-    if (secp256k1_equality_plaintext_verify(
-        ctx,
-        proof,
-        &pk,
-        &c2,
-        &c1,
-        amount,
-        context_hash) != 1)
+    if (secp256k1_equality_plaintext_verify(ctx, proof, &pk, &c2, &c1, amount, context_hash) != 1)
     {
         return -1;
     }

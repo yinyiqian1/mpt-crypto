@@ -101,30 +101,46 @@ mpt_secp256k1_context();
 /**
  * @brief Context Hash for ConfidentialMPTConvert.
  */
-int mpt_get_convert_context_hash(account_id account, mpt_issuance_id iss,
-                                 uint32_t sequence,
-                                 uint8_t out_hash[kMPT_HALF_SHA_SIZE]);
+int
+mpt_get_convert_context_hash(
+    account_id account,
+    mpt_issuance_id iss,
+    uint32_t sequence,
+    uint8_t out_hash[kMPT_HALF_SHA_SIZE]);
 
 /**
  * @brief Context Hash for ConfidentialMPTConvertBack.
  */
-int mpt_get_convert_back_context_hash(account_id acc, mpt_issuance_id iss,
-                                      uint32_t seq, uint32_t ver,
-                                      uint8_t out_hash[kMPT_HALF_SHA_SIZE]);
+int
+mpt_get_convert_back_context_hash(
+    account_id acc,
+    mpt_issuance_id iss,
+    uint32_t seq,
+    uint32_t ver,
+    uint8_t out_hash[kMPT_HALF_SHA_SIZE]);
 
 /**
  * @brief Context Hash for ConfidentialMPTSend.
  */
-int mpt_get_send_context_hash(account_id acc, mpt_issuance_id iss, uint32_t seq,
-                              account_id dest, uint32_t ver,
-                              uint8_t out_hash[kMPT_HALF_SHA_SIZE]);
+int
+mpt_get_send_context_hash(
+    account_id acc,
+    mpt_issuance_id iss,
+    uint32_t seq,
+    account_id dest,
+    uint32_t ver,
+    uint8_t out_hash[kMPT_HALF_SHA_SIZE]);
 
 /**
  * @brief Context Hash for ConfidentialMPTClawback.
  */
-int mpt_get_clawback_context_hash(account_id acc, mpt_issuance_id iss,
-                                  uint32_t seq, account_id holder,
-                                  uint8_t out_hash[kMPT_HALF_SHA_SIZE]);
+int
+mpt_get_clawback_context_hash(
+    account_id acc,
+    mpt_issuance_id iss,
+    uint32_t seq,
+    account_id holder,
+    uint8_t out_hash[kMPT_HALF_SHA_SIZE]);
 
 /**
  * @brief Calculates the total size for a ConfidentialMPTSend proof.
@@ -311,7 +327,8 @@ mpt_get_confidential_send_proof(
  * @param context_hash  [in] The 32-byte context hash binding the proof to the transaction.
  * @param amount        [in] The amount to convert back.
  * @param params        [in] Pedersen commitment parameters.
- * @param out_proof     [out] The 883-byte buffer to be filled with the Pedersen linkage proof and range proof.
+ * @param out_proof     [out] The 883-byte buffer to be filled with the Pedersen linkage proof and
+ * range proof.
  * @return 0 on success, -1 on failure (e.g., math error or invalid parameters).
  */
 int
@@ -401,9 +418,10 @@ mpt_verify_convert_back_proof(
  *
  * Validates equality, Amount/Balance linkage, and range proofs.
  * Equality proof: Proves the same value is encrypted for the sender, receiver, issuer, and auditor.
- * Amount linkage: Proves the send amount in the ElGamal ciphertext matches the amount Pedersen commitment.
- * Balance linkage: Proves the sender's encrypted balance matches the balance Pedersen commitment.
- * Range proof: Proves the transfer amount and the remaining balance are within range from 0 to 2^64-1.
+ * Amount linkage: Proves the send amount in the ElGamal ciphertext matches the amount Pedersen
+ * commitment. Balance linkage: Proves the sender's encrypted balance matches the balance Pedersen
+ * commitment. Range proof: Proves the transfer amount and the remaining balance are within range
+ * from 0 to 2^64-1.
  *
  * @param proof                      [in] Concatenated equality, linkage and range proofs.
  * @param proof_len                  [in] Total length of the proof blob.
@@ -429,12 +447,14 @@ mpt_verify_send_proof(
 /**
  * @brief Verify proof for ConfidentialMPTClawback.
  *
- * Proves that a ciphertext, when decrypted by the issuer, results in exactly the plaintext amount specified in the transaction.
+ * Proves that a ciphertext, when decrypted by the issuer, results in exactly the plaintext amount
+ * specified in the transaction.
  *
  * @param proof        [in] The equality proof.
  * @param amount       [in] The publicly known amount to be clawed back.
  * @param pubkey       [in] The issuer's public key.
- * @param ciphertext   [in] The ciphertext associated with the issuer's balance on the holder's account.
+ * @param ciphertext   [in] The ciphertext associated with the issuer's balance on the holder's
+ * account.
  * @param context_hash [in] 32-byte transaction context hash.
  * @return 0 on success, -1 on failure.
  */
@@ -471,12 +491,14 @@ mpt_verify_amount_linkage(
     uint8_t const context_hash[kMPT_HALF_SHA_SIZE]);
 
 /**
- * @brief Verifies the cryptographic linkage between an ElGamal balance ciphertext and a Pedersen commitment.
+ * @brief Verifies the cryptographic linkage between an ElGamal balance ciphertext and a Pedersen
+ * commitment.
  *
  * @param proof        [in] The 195-byte Pedersen linkage proof buffer.
  * @param ciphertext   [in] The 66-byte ElGamal ciphertext representing the encrypted balance.
  * @param pubkey       [in] The 33-byte compressed public key of the balance holder.
- * @param commitment   [in] The 33-byte Pedersen commitment point to be verified against the ciphertext.
+ * @param commitment   [in] The 33-byte Pedersen commitment point to be verified against the
+ * ciphertext.
  * @param context_hash [in] The 32-byte context hash binding this proof to a specific transaction.
  * @return 0 on success, -1 on failure.
  */
@@ -544,7 +566,8 @@ mpt_verify_aggregated_bulletproof(
     uint8_t const context_hash[kMPT_HALF_SHA_SIZE]);
 
 /**
- * @brief Verifies that the sending amount and remaining balance reside within the valid range from 0 to 2^64-1.
+ * @brief Verifies that the sending amount and remaining balance reside within the valid range from
+ * 0 to 2^64-1.
  *
  * @param ctx                [in] secp256k1-zkp context.
  * @param proof              [in] 754-byte Double Bulletproof.

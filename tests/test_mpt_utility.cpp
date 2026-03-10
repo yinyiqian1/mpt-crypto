@@ -1,14 +1,17 @@
+#include <utility/mpt_utility.h>
+
 #include "test_utils.h"
+#include <secp256k1_mpt.h>
 
 #include <algorithm>
 #include <iostream>
 #include <vector>
-#include <secp256k1_mpt.h>
-#include <utility/mpt_utility.h>
 
 // helper to create mock accounts and issuance IDs
 template <typename T>
-T create_mock_id(uint8_t fill) {
+T
+create_mock_id(uint8_t fill)
+{
     T mock;
     std::fill(std::begin(mock.bytes), std::end(mock.bytes), fill);
     return mock;
@@ -24,7 +27,9 @@ test_encryption_decryption()
     EXPECT(mpt_generate_keypair(priv, pub) == 0);
 
     std::vector<uint64_t> test_amounts = {
-        0, 1, 1000,
+        0,
+        1,
+        1000,
         // todo: due to the lib's current limitation, large numbers
         // are not supported yet. We need to add them back once the limitation is fixed.
         // 123456789,
@@ -129,8 +134,9 @@ test_mpt_confidential_send()
 
     // Generate context hash for the transaction
     uint8_t send_ctx_hash[kMPT_HALF_SHA_SIZE];
-    EXPECT(mpt_get_send_context_hash(sender_acc, issuance, seq, dest_acc,
-                                     version, send_ctx_hash) == 0);
+    EXPECT(
+        mpt_get_send_context_hash(sender_acc, issuance, seq, dest_acc, version, send_ctx_hash) ==
+        0);
 
     // Prepare pedersen proof params for both amount and balance linkage proofs
     mpt_pedersen_proof_params amt_params;
@@ -142,7 +148,8 @@ test_mpt_confidential_send()
     mpt_pedersen_proof_params bal_params;
     bal_params.amount = prev_balance;
     std::copy(balance_bf, balance_bf + kMPT_BLINDING_FACTOR_SIZE, bal_params.blinding_factor);
-    std::copy(balance_comm, balance_comm + kMPT_PEDERSEN_COMMIT_SIZE, bal_params.pedersen_commitment);
+    std::copy(
+        balance_comm, balance_comm + kMPT_PEDERSEN_COMMIT_SIZE, bal_params.pedersen_commitment);
 
     uint8_t prev_bal_bf[kMPT_BLINDING_FACTOR_SIZE];
     uint8_t prev_bal_ct[kMPT_ELGAMAL_TOTAL_SIZE];
@@ -155,17 +162,18 @@ test_mpt_confidential_send()
     std::vector<uint8_t> proof(proof_len);
 
     // Verify the confidential send proof
-    EXPECT(mpt_get_confidential_send_proof(
-        sender_priv,
-        amount_to_send,
-        recipients.data(),
-        3,
-        shared_bf,
-        send_ctx_hash,
-        &amt_params,
-        &bal_params,
-        proof.data(),
-        &proof_len) == 0);
+    EXPECT(
+        mpt_get_confidential_send_proof(
+            sender_priv,
+            amount_to_send,
+            recipients.data(),
+            3,
+            shared_bf,
+            send_ctx_hash,
+            &amt_params,
+            &bal_params,
+            proof.data(),
+            &proof_len) == 0);
 }
 
 void
@@ -191,8 +199,7 @@ test_mpt_convert_back()
 
     // Generate context hash
     uint8_t context_hash[kMPT_HALF_SHA_SIZE];
-    EXPECT(mpt_get_convert_back_context_hash(acc, issuance, seq, version,
-                                             context_hash) == 0);
+    EXPECT(mpt_get_convert_back_context_hash(acc, issuance, seq, version, context_hash) == 0);
 
     // Generate pedersen commitments for current balance
     uint8_t pcm_bf[kMPT_BLINDING_FACTOR_SIZE];
@@ -209,16 +216,14 @@ test_mpt_convert_back()
 
     // Generate convert back proof
     uint8_t proof[kMPT_PEDERSEN_LINK_SIZE + kMPT_SINGLE_BULLETPROOF_SIZE];
-    EXPECT(mpt_get_convert_back_proof(priv, pub, context_hash, amount_to_convert_back, &pc_params, proof) == 0);
+    EXPECT(
+        mpt_get_convert_back_proof(
+            priv, pub, context_hash, amount_to_convert_back, &pc_params, proof) == 0);
 
     // Vefify the ZKProof for convert back
-    EXPECT(mpt_verify_convert_back_proof(
-        proof,
-        pub,
-        spending_bal_ct,
-        pcm_comm,
-        amount_to_convert_back,
-        context_hash) == 0);
+    EXPECT(
+        mpt_verify_convert_back_proof(
+            proof, pub, spending_bal_ct, pcm_comm, amount_to_convert_back, context_hash) == 0);
 }
 
 void
@@ -237,8 +242,7 @@ test_mpt_clawback()
 
     // Generate context hash
     uint8_t context_hash[kMPT_HALF_SHA_SIZE];
-    EXPECT(mpt_get_clawback_context_hash(issuer_acc, issuance, seq, holder_acc,
-                                         context_hash) == 0);
+    EXPECT(mpt_get_clawback_context_hash(issuer_acc, issuance, seq, holder_acc, context_hash) == 0);
 
     // Mock holder's "sfIssuerEncryptedBalance"
     uint8_t bf[kMPT_BLINDING_FACTOR_SIZE];
@@ -248,17 +252,14 @@ test_mpt_clawback()
 
     // Generate clawback proof
     uint8_t proof[kMPT_EQUALITY_PROOF_SIZE];
-    EXPECT(mpt_get_clawback_proof(
-        issuer_priv, issuer_pub, context_hash, claw_amount, issuer_encrypted_bal, proof) == 0);
+    EXPECT(
+        mpt_get_clawback_proof(
+            issuer_priv, issuer_pub, context_hash, claw_amount, issuer_encrypted_bal, proof) == 0);
 
     // Verify the clawback proof
-    EXPECT(mpt_verify_clawback_proof(
-        proof,
-        claw_amount,
-        issuer_pub,
-        issuer_encrypted_bal,
-        context_hash
-    ) == 0);
+    EXPECT(
+        mpt_verify_clawback_proof(
+            proof, claw_amount, issuer_pub, issuer_encrypted_bal, context_hash) == 0);
 }
 
 int
