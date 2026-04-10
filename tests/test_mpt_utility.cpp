@@ -656,39 +656,147 @@ test_mpt_convert_back()
 }
 
 void
-test_mpt_clawback()
+test_mpt_clawback_integrate()
 {
-    // Setup mock account, issuance and transaction details
     account_id issuer_acc = create_mock_id<account_id>(0x11);
     account_id holder_acc = create_mock_id<account_id>(0x22);
     mpt_issuance_id issuance = create_mock_id<mpt_issuance_id>(0xCC);
-
     uint32_t seq = 200;
     uint64_t claw_amount = 500;
 
     uint8_t issuer_priv[kMPT_PRIVKEY_SIZE], issuer_pub[kMPT_PUBKEY_SIZE];
     EXPECT(mpt_generate_keypair(issuer_priv, issuer_pub) == 0);
 
-    // Generate context hash
+    // Context hash
     uint8_t context_hash[kMPT_HALF_SHA_SIZE];
     EXPECT(mpt_get_clawback_context_hash(issuer_acc, issuance, seq, holder_acc, context_hash) == 0);
 
-    // Mock holder's "sfIssuerEncryptedBalance"
+    // sfIssuerEncryptedBalance: ElGamal ciphertext encrypted under issuer's key
     uint8_t bf[kMPT_BLINDING_FACTOR_SIZE];
     uint8_t issuer_encrypted_bal[kMPT_ELGAMAL_TOTAL_SIZE];
     EXPECT(mpt_generate_blinding_factor(bf) == 0);
     EXPECT(mpt_encrypt_amount(claw_amount, issuer_pub, bf, issuer_encrypted_bal) == 0);
 
-    // Generate clawback proof
-    uint8_t proof[kMPT_EQUALITY_PROOF_SIZE];
+    // Prove
+    uint8_t proof[SECP256K1_COMPACT_CLAWBACK_PROOF_SIZE];
     EXPECT(
         mpt_get_clawback_proof(
             issuer_priv, issuer_pub, context_hash, claw_amount, issuer_encrypted_bal, proof) == 0);
 
-    // Verify the clawback proof
+    // Verify
     EXPECT(
         mpt_verify_clawback_proof(
             proof, claw_amount, issuer_pub, issuer_encrypted_bal, context_hash) == 0);
+}
+
+void
+test_mpt_clawback()
+{
+    // valid: prove and verify clawback
+    {
+        account_id issuer_acc = create_mock_id<account_id>(0x11);
+        account_id holder_acc = create_mock_id<account_id>(0x22);
+        mpt_issuance_id issuance = create_mock_id<mpt_issuance_id>(0xCC);
+        uint32_t seq = 200;
+        uint64_t claw_amount = 500;
+
+        uint8_t issuer_priv[kMPT_PRIVKEY_SIZE], issuer_pub[kMPT_PUBKEY_SIZE];
+        EXPECT(mpt_generate_keypair(issuer_priv, issuer_pub) == 0);
+
+        uint8_t context_hash[kMPT_HALF_SHA_SIZE];
+        EXPECT(
+            mpt_get_clawback_context_hash(issuer_acc, issuance, seq, holder_acc, context_hash) ==
+            0);
+
+        uint8_t bf[kMPT_BLINDING_FACTOR_SIZE];
+        uint8_t issuer_encrypted_bal[kMPT_ELGAMAL_TOTAL_SIZE];
+        EXPECT(mpt_generate_blinding_factor(bf) == 0);
+        EXPECT(mpt_encrypt_amount(claw_amount, issuer_pub, bf, issuer_encrypted_bal) == 0);
+
+        // Proof size: 64 bytes (compact sigma)
+        uint8_t proof[SECP256K1_COMPACT_CLAWBACK_PROOF_SIZE];
+        EXPECT(
+            mpt_get_clawback_proof(
+                issuer_priv, issuer_pub, context_hash, claw_amount, issuer_encrypted_bal, proof) ==
+            0);
+
+        EXPECT(
+            mpt_verify_clawback_proof(
+                proof, claw_amount, issuer_pub, issuer_encrypted_bal, context_hash) == 0);
+    }
+
+    // invalid: corrupted proof byte
+    {
+        account_id issuer_acc = create_mock_id<account_id>(0x11);
+        account_id holder_acc = create_mock_id<account_id>(0x22);
+        mpt_issuance_id issuance = create_mock_id<mpt_issuance_id>(0xCC);
+        uint8_t issuer_priv[kMPT_PRIVKEY_SIZE], issuer_pub[kMPT_PUBKEY_SIZE];
+        EXPECT(mpt_generate_keypair(issuer_priv, issuer_pub) == 0);
+        uint8_t ctx[kMPT_HALF_SHA_SIZE];
+        EXPECT(mpt_get_clawback_context_hash(issuer_acc, issuance, 1, holder_acc, ctx) == 0);
+        uint8_t bf[kMPT_BLINDING_FACTOR_SIZE], ct[kMPT_ELGAMAL_TOTAL_SIZE];
+        EXPECT(mpt_generate_blinding_factor(bf) == 0);
+        EXPECT(mpt_encrypt_amount(500, issuer_pub, bf, ct) == 0);
+        uint8_t proof[SECP256K1_COMPACT_CLAWBACK_PROOF_SIZE];
+        EXPECT(mpt_get_clawback_proof(issuer_priv, issuer_pub, ctx, 500, ct, proof) == 0);
+        proof[0] ^= 0xFF;
+        EXPECT(mpt_verify_clawback_proof(proof, 500, issuer_pub, ct, ctx) != 0);
+    }
+
+    // invalid: wrong context hash
+    {
+        account_id issuer_acc = create_mock_id<account_id>(0x11);
+        account_id holder_acc = create_mock_id<account_id>(0x22);
+        mpt_issuance_id issuance = create_mock_id<mpt_issuance_id>(0xCC);
+        uint8_t issuer_priv[kMPT_PRIVKEY_SIZE], issuer_pub[kMPT_PUBKEY_SIZE];
+        EXPECT(mpt_generate_keypair(issuer_priv, issuer_pub) == 0);
+        uint8_t ctx[kMPT_HALF_SHA_SIZE];
+        EXPECT(mpt_get_clawback_context_hash(issuer_acc, issuance, 1, holder_acc, ctx) == 0);
+        uint8_t bf[kMPT_BLINDING_FACTOR_SIZE], ct[kMPT_ELGAMAL_TOTAL_SIZE];
+        EXPECT(mpt_generate_blinding_factor(bf) == 0);
+        EXPECT(mpt_encrypt_amount(500, issuer_pub, bf, ct) == 0);
+        uint8_t proof[SECP256K1_COMPACT_CLAWBACK_PROOF_SIZE];
+        EXPECT(mpt_get_clawback_proof(issuer_priv, issuer_pub, ctx, 500, ct, proof) == 0);
+        uint8_t bad_ctx[kMPT_HALF_SHA_SIZE] = {0};
+        EXPECT(mpt_verify_clawback_proof(proof, 500, issuer_pub, ct, bad_ctx) != 0);
+    }
+
+    // invalid: wrong amount
+    {
+        account_id issuer_acc = create_mock_id<account_id>(0x11);
+        account_id holder_acc = create_mock_id<account_id>(0x22);
+        mpt_issuance_id issuance = create_mock_id<mpt_issuance_id>(0xCC);
+        uint8_t issuer_priv[kMPT_PRIVKEY_SIZE], issuer_pub[kMPT_PUBKEY_SIZE];
+        EXPECT(mpt_generate_keypair(issuer_priv, issuer_pub) == 0);
+        uint8_t ctx[kMPT_HALF_SHA_SIZE];
+        EXPECT(mpt_get_clawback_context_hash(issuer_acc, issuance, 1, holder_acc, ctx) == 0);
+        uint8_t bf[kMPT_BLINDING_FACTOR_SIZE], ct[kMPT_ELGAMAL_TOTAL_SIZE];
+        EXPECT(mpt_generate_blinding_factor(bf) == 0);
+        EXPECT(mpt_encrypt_amount(500, issuer_pub, bf, ct) == 0);
+        uint8_t proof[SECP256K1_COMPACT_CLAWBACK_PROOF_SIZE];
+        EXPECT(mpt_get_clawback_proof(issuer_priv, issuer_pub, ctx, 500, ct, proof) == 0);
+        EXPECT(mpt_verify_clawback_proof(proof, 999, issuer_pub, ct, ctx) != 0);
+    }
+
+    // invalid: wrong ciphertext (C1/C2 mismatch)
+    {
+        account_id issuer_acc = create_mock_id<account_id>(0x11);
+        account_id holder_acc = create_mock_id<account_id>(0x22);
+        mpt_issuance_id issuance = create_mock_id<mpt_issuance_id>(0xCC);
+        uint8_t issuer_priv[kMPT_PRIVKEY_SIZE], issuer_pub[kMPT_PUBKEY_SIZE];
+        EXPECT(mpt_generate_keypair(issuer_priv, issuer_pub) == 0);
+        uint8_t ctx[kMPT_HALF_SHA_SIZE];
+        EXPECT(mpt_get_clawback_context_hash(issuer_acc, issuance, 1, holder_acc, ctx) == 0);
+        uint8_t bf[kMPT_BLINDING_FACTOR_SIZE], ct[kMPT_ELGAMAL_TOTAL_SIZE];
+        EXPECT(mpt_generate_blinding_factor(bf) == 0);
+        EXPECT(mpt_encrypt_amount(500, issuer_pub, bf, ct) == 0);
+        uint8_t proof[SECP256K1_COMPACT_CLAWBACK_PROOF_SIZE];
+        EXPECT(mpt_get_clawback_proof(issuer_priv, issuer_pub, ctx, 500, ct, proof) == 0);
+        uint8_t bad_bf[kMPT_BLINDING_FACTOR_SIZE], bad_ct[kMPT_ELGAMAL_TOTAL_SIZE];
+        EXPECT(mpt_generate_blinding_factor(bad_bf) == 0);
+        EXPECT(mpt_encrypt_amount(500, issuer_pub, bad_bf, bad_ct) == 0);
+        EXPECT(mpt_verify_clawback_proof(proof, 500, issuer_pub, bad_ct, ctx) != 0);
+    }
 }
 
 int
@@ -700,6 +808,7 @@ main()
     test_mpt_confidential_send();
     test_mpt_convert_back_integrate();
     test_mpt_convert_back();
+    test_mpt_clawback_integrate();
     test_mpt_clawback();
 
     std::cout << "\n[SUCCESS] All assertions passed!" << std::endl;

@@ -783,7 +783,7 @@ mpt_get_clawback_proof(
     uint8_t const context_hash[kMPT_HALF_SHA_SIZE],
     uint64_t const amount,
     uint8_t const ciphertext[kMPT_ELGAMAL_TOTAL_SIZE],
-    uint8_t out_proof[kMPT_EQUALITY_PROOF_SIZE])
+    uint8_t out_proof[SECP256K1_COMPACT_CLAWBACK_PROOF_SIZE])
 {
     if (!priv || !pub || !context_hash || !ciphertext || !out_proof)
         return -1;
@@ -800,8 +800,8 @@ mpt_get_clawback_proof(
     if (!mpt_make_ec_pair(ciphertext, &c1, &c2))
         return -1;
 
-    if (secp256k1_equality_plaintext_prove(
-            ctx, out_proof, &pk, &c2, &c1, amount, priv, context_hash) != 1)
+    if (secp256k1_compact_clawback_prove(
+            ctx, out_proof, amount, priv, &pk, &c1, &c2, context_hash) != 1)
     {
         return -1;
     }
@@ -1333,7 +1333,7 @@ mpt_verify_send_proof(
 
 int
 mpt_verify_clawback_proof(
-    uint8_t const proof[kMPT_EQUALITY_PROOF_SIZE],
+    uint8_t const proof[SECP256K1_COMPACT_CLAWBACK_PROOF_SIZE],
     uint64_t const amount,
     uint8_t const pubkey[kMPT_PUBKEY_SIZE],
     uint8_t const ciphertext[kMPT_ELGAMAL_TOTAL_SIZE],
@@ -1346,19 +1346,19 @@ mpt_verify_clawback_proof(
     if (!ctx)
         return -1;
 
-    secp256k1_pubkey c1, c2;
-    if (!mpt_make_ec_pair(ciphertext, &c1, &c2))
-        return -1;
-
     secp256k1_pubkey pk;
     if (secp256k1_ec_pubkey_parse(ctx, &pk, pubkey, kMPT_PUBKEY_SIZE) != 1)
         return -1;
 
-    if (secp256k1_equality_plaintext_verify(ctx, proof, &pk, &c2, &c1, amount, context_hash) != 1)
-    {
+    secp256k1_pubkey c1, c2;
+    if (!mpt_make_ec_pair(ciphertext, &c1, &c2))
         return -1;
-    }
 
-    return 0;
+    bool valid = true;
+
+    if (secp256k1_compact_clawback_verify(ctx, proof, amount, &pk, &c1, &c2, context_hash) != 1)
+        valid = false;
+
+    return valid ? 0 : -1;
 }
 }

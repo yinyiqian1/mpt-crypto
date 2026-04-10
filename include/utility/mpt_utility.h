@@ -366,13 +366,14 @@ mpt_get_convert_back_proof(
 
 /**
  * @brief Generates proof for ConfidentialMPTClawback.
- * @param priv              [in] The issuer's 32-byte private key.
- * @param pub               [in] The issuer's 33-byte public key.
- * @param context_hash      [in] The 32-byte context hash binding the proof to the transaction.
- * @param amount            [in] The plaintext amount to be clawed back.
- * @param ciphertext  [in] The 66-byte sfIssuerEncryptedBalance blob from the ledger.
- * @param out_proof         [out] The 98-byte buffer to be filled with the equality proof.
- * @return 0 on success, -1 on failure (e.g., math error or invalid ciphertext).
+ * @param priv         [in] The issuer's 32-byte private key.
+ * @param pub          [in] The issuer's 33-byte compressed public key.
+ * @param context_hash [in] The 32-byte context hash binding the proof to the transaction.
+ * @param amount       [in] The publicly known amount to be clawed back.
+ * @param ciphertext   [in] The 66-byte sfIssuerEncryptedBalance blob associated with the holder's
+ *                         account on the ledger.
+ * @param out_proof    [out] 64-byte buffer for the compact sigma proof.
+ * @return 0 on success, -1 on failure.
  */
 int
 mpt_get_clawback_proof(
@@ -381,7 +382,7 @@ mpt_get_clawback_proof(
     uint8_t const context_hash[kMPT_HALF_SHA_SIZE],
     uint64_t const amount,
     uint8_t const ciphertext[kMPT_ELGAMAL_TOTAL_SIZE],
-    uint8_t out_proof[kMPT_EQUALITY_PROOF_SIZE]);
+    uint8_t out_proof[SECP256K1_COMPACT_CLAWBACK_PROOF_SIZE]);
 
 /* ============================================================================
  * Encryption & Commitment Validation (Non-ZKP)
@@ -473,17 +474,17 @@ mpt_verify_send_proof(
  * Proves that a ciphertext, when decrypted by the issuer, results in exactly the plaintext amount
  * specified in the transaction.
  *
- * @param proof        [in] The equality proof.
+ * @param proof        [in] The 64-byte compact sigma proof.
  * @param amount       [in] The publicly known amount to be clawed back.
- * @param pubkey       [in] The issuer's public key.
- * @param ciphertext   [in] The ciphertext associated with the issuer's balance on the holder's
- * account.
- * @param context_hash [in] 32-byte transaction context hash.
+ * @param pubkey       [in] The issuer's 33-byte compressed public key.
+ * @param ciphertext   [in] The 66-byte sfIssuerEncryptedBalance blob associated with the holder's
+ *                         account on the ledger.
+ * @param context_hash [in] The 32-byte transaction context hash.
  * @return 0 on success, -1 on failure.
  */
 int
 mpt_verify_clawback_proof(
-    uint8_t const proof[kMPT_EQUALITY_PROOF_SIZE],
+    uint8_t const proof[SECP256K1_COMPACT_CLAWBACK_PROOF_SIZE],
     uint64_t const amount,
     uint8_t const pubkey[kMPT_PUBKEY_SIZE],
     uint8_t const ciphertext[kMPT_ELGAMAL_TOTAL_SIZE],
