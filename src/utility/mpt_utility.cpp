@@ -219,11 +219,6 @@ mpt_add_common_zkp_fields(
 }
 
 extern "C" {
-size_t
-get_confidential_send_proof_size(size_t /* n_recipients */)
-{
-    return SECP256K1_COMPACT_STANDARD_PROOF_SIZE + kMPT_DOUBLE_BULLETPROOF_SIZE;
-}
 
 bool
 mpt_make_ec_pair(
@@ -596,21 +591,22 @@ mpt_get_balance_linkage_proof(
 int
 mpt_get_confidential_send_proof(
     uint8_t const priv[kMPT_PRIVKEY_SIZE],
+    uint8_t const pub[kMPT_PUBKEY_SIZE],
     uint64_t amount,
-    mpt_confidential_participant const* recipients,
-    size_t n_recipients,
+    mpt_confidential_participant const* participants,
+    size_t n_participants,
     uint8_t const tx_blinding_factor[kMPT_BLINDING_FACTOR_SIZE],
     uint8_t const context_hash[kMPT_HALF_SHA_SIZE],
-    mpt_pedersen_proof_params const* amount_params,
+    uint8_t const amount_commitment[kMPT_PEDERSEN_COMMIT_SIZE],
     mpt_pedersen_proof_params const* balance_params,
     uint8_t* out_proof,
     size_t* out_len)
 {
-    if (!priv || !recipients || !tx_blinding_factor || !context_hash || !amount_params ||
-        !balance_params || !out_proof || !out_len)
+    if (!priv || !pub || !participants || !tx_blinding_factor || !context_hash ||
+        !amount_commitment || !balance_params || !out_proof || !out_len)
         return -1;
 
-    if (n_recipients != 3 && n_recipients != 4)
+    if (n_participants != 3 && n_participants != 4)
         return -1;
 
     secp256k1_context const* ctx = mpt_secp256k1_context();
@@ -623,12 +619,12 @@ mpt_get_confidential_send_proof(
         return -1;
 
     secp256k1_pubkey c1;
-    std::vector<secp256k1_pubkey> c2_vec(n_recipients);
-    std::vector<secp256k1_pubkey> pk_vec(n_recipients);
+    std::vector<secp256k1_pubkey> c2_vec(n_participants);
+    std::vector<secp256k1_pubkey> pk_vec(n_participants);
 
-    for (size_t i = 0; i < n_recipients; ++i)
+    for (size_t i = 0; i < n_participants; ++i)
     {
-        auto const& rec = recipients[i];
+        auto const& rec = participants[i];
 
         if (i == 0)
         {
@@ -640,7 +636,7 @@ mpt_get_confidential_send_proof(
             if (!std::equal(
                     rec.ciphertext,
                     rec.ciphertext + kMPT_ELGAMAL_CIPHER_SIZE,
-                    recipients[0].ciphertext))
+                    participants[0].ciphertext))
                 return -1;
         }
 
@@ -655,14 +651,13 @@ mpt_get_confidential_send_proof(
             return -1;
     }
 
-    // Derive sender's public key from private key.
+    // Parse sender's public key from ledger.
     secp256k1_pubkey pk;
-    if (secp256k1_ec_pubkey_create(ctx, &pk, priv) != 1)
+    if (secp256k1_ec_pubkey_parse(ctx, &pk, pub, kMPT_PUBKEY_SIZE) != 1)
         return -1;
 
     secp256k1_pubkey pc_m;
-    if (secp256k1_ec_pubkey_parse(
-            ctx, &pc_m, amount_params->pedersen_commitment, kMPT_PEDERSEN_COMMIT_SIZE) != 1)
+    if (secp256k1_ec_pubkey_parse(ctx, &pc_m, amount_commitment, kMPT_PEDERSEN_COMMIT_SIZE) != 1)
         return -1;
 
     secp256k1_pubkey pc_b;
@@ -682,7 +677,7 @@ mpt_get_confidential_send_proof(
             tx_blinding_factor,
             priv,
             balance_params->blinding_factor,
-            n_recipients,
+            n_participants,
             &c1,
             c2_vec.data(),
             pk_vec.data(),
@@ -814,14 +809,14 @@ mpt_internal_verify_single(
     secp256k1_context* ctx,
     uint64_t amount,
     uint8_t const bf[kMPT_BLINDING_FACTOR_SIZE],
-    mpt_confidential_participant const* recipient)
+    mpt_confidential_participant const* participant)
 {
     secp256k1_pubkey pk, c1, c2;
 
-    if (secp256k1_ec_pubkey_parse(ctx, &pk, recipient->pubkey, kMPT_PUBKEY_SIZE) != 1)
+    if (secp256k1_ec_pubkey_parse(ctx, &pk, participant->pubkey, kMPT_PUBKEY_SIZE) != 1)
         return 1;
 
-    if (!mpt_make_ec_pair(recipient->ciphertext, &c1, &c2))
+    if (!mpt_make_ec_pair(participant->ciphertext, &c1, &c2))
         return 1;
 
     if (secp256k1_elgamal_verify_encryption(ctx, &c1, &c2, &pk, amount, bf) != 1)
@@ -1091,8 +1086,7 @@ mpt_verify_equality_proof(
     uint8_t const n_participants,
     uint8_t const context_hash[kMPT_HALF_SHA_SIZE])
 {
-    (void)proof_len;
-    if (!proof || !participants || !context_hash)
+    if (!ctx || !proof || !participants || !context_hash)
         return -1;
 
     // Must be 3 (Sender, Destination, Issuer) or 4 (plus Auditor)
@@ -1153,7 +1147,7 @@ mpt_verify_amount_linkage(
     uint8_t const commitment[kMPT_PEDERSEN_COMMIT_SIZE],
     uint8_t const context_hash[kMPT_HALF_SHA_SIZE])
 {
-    if (!proof || !ciphertext || !pubkey || !commitment || !context_hash)
+    if (!ctx || !proof || !ciphertext || !pubkey || !commitment || !context_hash)
         return -1;
 
     secp256k1_pubkey pk, c1, c2, pcm;
@@ -1176,13 +1170,16 @@ mpt_verify_amount_linkage(
 
 int
 mpt_verify_send_range_proof(
-    secp256k1_context const* ctx,
     uint8_t const proof[kMPT_DOUBLE_BULLETPROOF_SIZE],
     uint8_t const amount_commitment[kMPT_PEDERSEN_COMMIT_SIZE],
     uint8_t const balance_commitment[kMPT_PEDERSEN_COMMIT_SIZE],
     uint8_t const context_hash[kMPT_HALF_SHA_SIZE])
 {
     if (!proof || !amount_commitment || !balance_commitment || !context_hash)
+        return -1;
+
+    secp256k1_context const* ctx = mpt_secp256k1_context();
+    if (!ctx)
         return -1;
 
     secp256k1_pubkey pc_amount, pc_balance;
@@ -1224,7 +1221,6 @@ mpt_verify_send_range_proof(
 int
 mpt_verify_send_proof(
     uint8_t const* proof,
-    size_t const proof_len,
     mpt_confidential_participant const* participants,
     uint8_t const n_participants,
     uint8_t const sender_spending_ciphertext[kMPT_ELGAMAL_TOTAL_SIZE],
@@ -1232,16 +1228,11 @@ mpt_verify_send_proof(
     uint8_t const balance_commitment[kMPT_PEDERSEN_COMMIT_SIZE],
     uint8_t const context_hash[kMPT_HALF_SHA_SIZE])
 {
-    if (!proof || proof_len == 0 || !participants || !sender_spending_ciphertext ||
-        !amount_commitment || !balance_commitment || !context_hash)
+    if (!proof || !participants || !sender_spending_ciphertext || !amount_commitment ||
+        !balance_commitment || !context_hash)
         return -1;
 
     if (n_participants != 3 && n_participants != 4)
-        return -1;
-
-    size_t const total_required =
-        SECP256K1_COMPACT_STANDARD_PROOF_SIZE + kMPT_DOUBLE_BULLETPROOF_SIZE;
-    if (proof_len != total_required)
         return -1;
 
     secp256k1_context* ctx = mpt_secp256k1_context();
@@ -1282,10 +1273,6 @@ mpt_verify_send_proof(
             return -1;
     }
 
-    secp256k1_pubkey pk;
-    if (secp256k1_ec_pubkey_parse(ctx, &pk, participants[0].pubkey, kMPT_PUBKEY_SIZE) != 1)
-        return -1;
-
     secp256k1_pubkey pc_m;
     if (secp256k1_ec_pubkey_parse(ctx, &pc_m, amount_commitment, kMPT_PEDERSEN_COMMIT_SIZE) != 1)
         return -1;
@@ -1309,7 +1296,7 @@ mpt_verify_send_proof(
             c2_vec.data(),
             pk_vec.data(),
             &pc_m,
-            &pk,
+            &pk_vec[0],
             &pc_b,
             &b1,
             &b2,
@@ -1319,7 +1306,6 @@ mpt_verify_send_proof(
     }
 
     if (mpt_verify_send_range_proof(
-            ctx,
             proof + SECP256K1_COMPACT_STANDARD_PROOF_SIZE,
             amount_commitment,
             balance_commitment,

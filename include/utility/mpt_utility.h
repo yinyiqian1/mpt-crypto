@@ -31,7 +31,6 @@ extern "C" {
 
 // Proof sizes in bytes
 #define kMPT_SCHNORR_PROOF_SIZE 64
-#define kMPT_EQUALITY_PROOF_SIZE 98
 #define kMPT_PEDERSEN_LINK_SIZE 195
 #define kMPT_SINGLE_BULLETPROOF_SIZE 688
 #define kMPT_DOUBLE_BULLETPROOF_SIZE 754
@@ -140,19 +139,6 @@ mpt_get_clawback_context_hash(
     uint32_t seq,
     account_id holder,
     uint8_t out_hash[kMPT_HALF_SHA_SIZE]);
-
-/**
- * @brief Returns the total size in bytes for a ConfidentialMPTSend proof blob.
- *
- * The proof is now a fixed-size compact AND-composed sigma proof
- * (SECP256K1_COMPACT_STANDARD_PROOF_SIZE = 192 bytes) concatenated with
- * an aggregated Bulletproof range proof (kMPT_DOUBLE_BULLETPROOF_SIZE = 754 bytes),
- * yielding 946 bytes regardless of the number of recipients.
- *
- * @param n_recipients Ignored; retained for API compatibility.
- */
-size_t
-get_confidential_send_proof_size(size_t n_recipients);
 
 /* ============================================================================
  * Key & Ciphertext Utilities
@@ -307,19 +293,21 @@ mpt_get_balance_linkage_proof(
  * under a single Fiat-Shamir challenge, followed by an aggregated Bulletproof
  * range proof (754 bytes). Total proof size is fixed at 946 bytes.
  *
- * PC_m must be computed as m*G + r*H (i.e. with tx_blinding_factor as the
- * blinding factor, not an independent scalar).  amount_params->blinding_factor
- * is not used; only amount_params->pedersen_commitment (PC_m) is read.
+ * pc_m must be computed as m*G + r*H using tx_blinding_factor as the blinding
+ * factor (not an independent scalar), since the compact sigma proof binds pc_m
+ * to the ciphertext randomness r.
  *
  * @param priv               [in] The sender's 32-byte private key.
+ * @param pub                [in] The sender's 33-byte public key.
  * @param amount             [in] The amount being sent.
- * @param recipients         [in] List of recipients (Sender, Dest, Issuer[, Auditor]).
- * @param n_recipients       [in] Number of recipients (3 or 4).
- * @param tx_blinding_factor [in] The ElGamal randomness r (also blinding factor for PC_m).
+ * @param participants         [in] List of participants, including Sender, Dest, Issuer,
+ * Auditor(optional).
+ * @param n_participants       [in] Number of participants (3 or 4).
+ * @param tx_blinding_factor [in] The ElGamal randomness r (also blinding factor for pc_m).
  * @param context_hash       [in] The 32-byte context hash.
- * @param amount_params      [in] Must have pedersen_commitment set to PC_m = m*G + r*H.
- * @param balance_params     [in] Must have pedersen_commitment (PC_b), amount (balance),
- *                                blinding_factor (rho), and ciphertext (B1||B2).
+ * @param amount_commitment  [in] Pedersen commitment pc_m = m*G + r*H.
+ * @param balance_params     [in] Includes pedersen_commitment (pc_b), amount (balance),
+ *                                blinding_factor (rho), and ciphertext (b1||b2).
  * @param out_proof          [out] Buffer to receive the proof blob.
  * @param out_len            [in/out] In: capacity (must be >= 946). Out: bytes written.
  * @return 0 on success, -1 on failure.
@@ -327,12 +315,13 @@ mpt_get_balance_linkage_proof(
 int
 mpt_get_confidential_send_proof(
     uint8_t const priv[kMPT_PRIVKEY_SIZE],
+    uint8_t const pub[kMPT_PUBKEY_SIZE],
     uint64_t amount,
-    mpt_confidential_participant const* recipients,
-    size_t n_recipients,
+    mpt_confidential_participant const* participants,
+    size_t n_participants,
     uint8_t const tx_blinding_factor[kMPT_BLINDING_FACTOR_SIZE],
     uint8_t const context_hash[kMPT_HALF_SHA_SIZE],
-    mpt_pedersen_proof_params const* amount_params,
+    uint8_t const amount_commitment[kMPT_PEDERSEN_COMMIT_SIZE],
     mpt_pedersen_proof_params const* balance_params,
     uint8_t* out_proof,
     size_t* out_len);
@@ -341,18 +330,18 @@ mpt_get_confidential_send_proof(
  * @brief Generates proof for ConfidentialMPTConvertBack.
  *
  * Produces a compact AND-composed sigma proof (128 bytes) over the balance
- * witness (b, rho, sk_A), followed by a single Bulletproof range proof (688
- * bytes) over the remainder commitment PC_rem = PC_b - m*G.
+ * witness (b, rho, priv), followed by a single Bulletproof range proof (688
+ * bytes) over the remainder commitment pc_rem = pc_b - m*G.
  * Total proof size: 816 bytes (SECP256K1_COMPACT_CONVERTBACK_PROOF_SIZE +
  * kMPT_SINGLE_BULLETPROOF_SIZE).
  *
- * @param priv         [in] The holder's 32-byte private key (sk_A).
- * @param pub          [in] The holder's 33-byte public key (P_A).
+ * @param priv         [in] The holder's 32-byte private key.
+ * @param pub          [in] The holder's 33-byte public key.
  * @param context_hash [in] The 32-byte context hash binding the proof to the transaction.
  * @param amount       [in] The publicly revealed conversion amount m.
- * @param params       [in] Must have: pedersen_commitment (PC_b), blinding_factor (rho),
- *                          amount (balance b), and ciphertext (B1||B2).
- * @param out_proof    [out] 816-byte buffer for the compact sigma proof || range proof.
+ * @param params       [in] Includes pedersen_commitment (pc_b), blinding_factor (rho),
+ *                          amount (balance b), and ciphertext (b1||b2).
+ * @param out_proof    [out] 816-byte buffer for the compact sigma proof and range proof.
  * @return 0 on success, -1 on failure.
  */
 int
@@ -370,8 +359,7 @@ mpt_get_convert_back_proof(
  * @param pub          [in] The issuer's 33-byte compressed public key.
  * @param context_hash [in] The 32-byte context hash binding the proof to the transaction.
  * @param amount       [in] The publicly known amount to be clawed back.
- * @param ciphertext   [in] The 66-byte sfIssuerEncryptedBalance blob associated with the holder's
- *                         account on the ledger.
+ * @param ciphertext   [in] The 66-byte sfIssuerEncryptedBalance blob from the ledger.
  * @param out_proof    [out] 64-byte buffer for the compact sigma proof.
  * @return 0 on success, -1 on failure.
  */
@@ -444,23 +432,21 @@ mpt_verify_convert_back_proof(
  * Verifies the compact AND-composed sigma proof (first 192 bytes) that proves
  * ciphertext correctness, Pedersen commitment linkage, and balance ownership,
  * followed by an aggregated Bulletproof range proof (next 754 bytes).
- * Expected proof_len is exactly 946 bytes.
+ * Proof size is fixed at 946 bytes.
  *
  * @param proof                      [in] 946-byte proof blob (compact sigma || Bulletproof).
- * @param proof_len                  [in] Must be exactly 946.
  * @param participants               [in] List of participants' public keys and ciphertexts.
  *                                        participants[0] is the sender.
  * @param n_participants             [in] Number of participants (3 or 4).
- * @param sender_spending_ciphertext [in] The sender's on-ledger balance ciphertext (B1||B2).
- * @param amount_commitment          [in] Pedersen commitment PC_m to the transfer amount.
- * @param balance_commitment         [in] Pedersen commitment PC_b to the sender's balance.
+ * @param sender_spending_ciphertext [in] The sender's on-ledger balance ciphertext (b1||b2).
+ * @param amount_commitment          [in] Pedersen commitment pc_m to the transfer amount.
+ * @param balance_commitment         [in] Pedersen commitment pc_b to the sender's balance.
  * @param context_hash               [in] The 32-byte transaction context hash.
  * @return 0 on success, -1 on failure.
  */
 int
 mpt_verify_send_proof(
     uint8_t const* proof,
-    size_t const proof_len,
     mpt_confidential_participant const* participants,
     uint8_t const n_participants,
     uint8_t const sender_spending_ciphertext[kMPT_ELGAMAL_TOTAL_SIZE],
@@ -602,10 +588,9 @@ mpt_verify_aggregated_bulletproof(
  */
 int
 mpt_verify_send_range_proof(
-    secp256k1_context const* ctx,
     uint8_t const proof[kMPT_DOUBLE_BULLETPROOF_SIZE],
     uint8_t const amount_commitment[kMPT_PEDERSEN_COMMIT_SIZE],
-    uint8_t const remainder_commitment[kMPT_PEDERSEN_COMMIT_SIZE],
+    uint8_t const balance_commitment[kMPT_PEDERSEN_COMMIT_SIZE],
     uint8_t const context_hash[kMPT_HALF_SHA_SIZE]);
 
 #ifdef __cplusplus
